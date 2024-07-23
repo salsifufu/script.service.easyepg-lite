@@ -186,7 +186,7 @@ def add_channel():
                         g.user_db.save_settings()
             except Exception as e:
                 print_error(traceback.format_exc())
-                return json.dumps({"success": False, "message": "The channels could not be added."})
+                return json.dumps({"success": False, "message": "Not all channels could not be added."})
     else: 
         try:
             if "xml" in provider_id:
@@ -197,11 +197,11 @@ def add_channel():
                 for id in ids:
                     if ch_list[1].get(id.split("|")[1]):
                         g.user_db.main["channels"][id.replace(f"{provider_id}|", f"{provider_id}_")] = \
-                            {"stationId": id.replace(f"{provider_id}|", ""), "name": ch_list[1][id.split("|")[1]]["name"], "preferredImage": {"uri": ch_list[1][id.split("|")[1]].get("icon")}}
+                            {"stationId": id.replace(f"{provider_id}|", ""), "name": ch_list[1][id.split("|")[1]]["name"], "preferredImage": {"uri": ch_list[1][id.split("|")[1]]["icon"]}}
                         g.user_db.save_settings()
         except Exception as e:
             print_error(traceback.format_exc())
-            return json.dumps({"success": False, "message": "The channels could not be added."})
+            return json.dumps({"success": False, "message": "Not all channels could not be added."})
 
     return json.dumps({"success": True})
 
@@ -259,7 +259,9 @@ def grabber_status():
 @route("/api/start-grabber", method="GET")
 def start_grabber():
     g.grabbing = True
-    return json.dumps({"success": True})
+    refresh_epg_url = f"http://localhost:9981/api/epggrab/internal/rerun?rerun=1"
+#    refresh_epg = requests.get(refresh_epg_url).json()
+#    return json.dumps({"success": True})
 
 @route("/api/stop-grabber", method="GET")
 def stop_grabber():

@@ -1,36 +1,24 @@
 from datetime import datetime, timedelta, timezone
-import gzip, lzma, requests, time, xmltodict
+import gzip, lzma, requests, xmltodict
 
-
-def convert_timestring(string):
-    dt = datetime(*(time.strptime(string[0:13],'%Y%m%d%H%M%S')[0:6])).astimezone(timezone.utc)
-    
-    if string[15] == "+":
-        dt -= timedelta(hours=int(string[16:18]), 
-                                 minutes=int(string[18:]))
-    elif string[15] == '-':
-        dt += timedelta(hours=int(string[16:18]),
-                                 minutes=int(string[18:]))
-
-    return int(dt.timestamp())
 
 def file_decoder(data):
     p = None
 
     try:  # RAW XML
-        p = xmltodict.parse(data, dict_constructor=dict)
+        p = xmltodict.parse(data)
     except:
         pass
             
     if not p:        
         try:  # GZIP/GZ
-            p = xmltodict.parse(gzip.decompress(data), dict_constructor=dict)
+            p = xmltodict.parse(gzip.decompress(data))
         except:
             pass
     
     if not p:
         try:  # XZ
-            p = xmltodict.parse(lzma.decompress(data), dict_constructor=dict)
+            p = xmltodict.parse(lzma.decompress(data))
         except:
             raise Exception("File type could not be verified.")
         
@@ -44,36 +32,11 @@ def channels(data, session, headers={}):
     r = requests.get(url, headers=headers)
     p = file_decoder(r.content)
 
-    if type(p["tv"]["channel"]) == list:
-        for ch in p["tv"]["channel"]:
-            chan = ch["@id"].replace("&amp;", "and")
-            chlist[chan] = {}
-            if ch.get("icon") and type(ch["icon"]) == dict:
-                chlist[chan]["icon"] = ch["icon"]["@src"]
-            elif ch.get("icon") and type(ch["icon"]) == list:
-                chlist[chan]["icon"] = ch["icon"][0]["@src"]
-            if type(ch["display-name"]) == list:
-                chlist[chan]["name"] = ch["display-name"][0]
-            elif "@lang" in ch["display-name"]:
-                chlist[chan]["name"] = ch["display-name"]["#text"]
-                chlist[chan]["lang"] = ch["display-name"]["@lang"]
-            else:
-                chlist[chan]["name"] = ch["display-name"]
-    elif type(p["tv"]["channel"]) == dict:
-        ch = p["tv"]["channel"]
-        chan = ch["@id"].replace("&amp;", "and")
-        chlist[chan] = {}
-        if ch.get("icon") and type(ch["icon"]) == dict:
-            chlist[chan]["icon"] = ch["icon"]["@src"]
-        elif ch.get("icon") and type(ch["icon"]) == list:
-            chlist[chan]["icon"] = ch["icon"][0]["@src"]
-        if type(ch["display-name"]) == list:
-            chlist[chan]["name"] = ch["display-name"][0]
-        elif "@lang" in ch["display-name"]:
-            chlist[chan]["name"] = ch["display-name"]["#text"]
-            chlist[chan]["lang"] = ch["display-name"]["@lang"]
+    for ch in p["tv"]["channel"]:
+        if "@lang" in ch["display-name"]:
+            chlist[ch["@id"]] = {"name": ch["display-name"]["#text"], "lang": ch["display-name"]["@lang"], "icon": ch.get("icon", {"@src": None})["@src"]}
         else:
-            chlist[chan]["name"] = ch["display-name"]
+            chlist[ch["@id"]] = {"name": ch["display-name"], "icon": ch.get("icon", {"@src": None})["@src"]}
 
     return chlist
 
@@ -92,35 +55,29 @@ def epg_main_converter(data, channels, settings, ch_id=None):
     for p in item["tv"]["programme"]:
         g = dict()
 
-        g["c_id"] = p["@channel"].replace("&amp;", "and")
+        g["c_id"] = p["@channel"]
         
-        g["start"] = convert_timestring(f'{p["@start"]} {datetime.now(timezone.utc).astimezone().strftime("%z")}' if len(p["@start"]) == 14 else p["@start"])
-        g["end"] = convert_timestring(f'{p["@stop"]} {datetime.now(timezone.utc).astimezone().strftime("%z")}' if len(p["@stop"]) == 14 else p["@stop"])
+        g["start"] = int(datetime.strptime(f'{p["@start"]} {datetime.now(timezone.utc).astimezone().strftime("%z")}' if len(p["@start"]) == 14 else p["@start"], "%Y%m%d%H%M%S %z").timestamp())
+        g["end"] = int(datetime.strptime(f'{p["@stop"]} {datetime.now(timezone.utc).astimezone().strftime("%z")}' if len(p["@stop"]) == 14 else p["@stop"], "%Y%m%d%H%M%S %z").timestamp())
         g["b_id"] = f"{g['c_id']}_{g['start']}"
 
         if g["c_id"] in channels and dt_start <= g["start"] <= dt_end:
-            if type(p["title"]) == list:
-                g["title"] = p["title"][0]["#text"] if "@lang" in p["title"][0] else p["title"][0]
-            else:
-                g["title"] = p["title"]["#text"] if "@lang" in p["title"] else p["title"]
+            g["title"] = p["title"]["#text"] if "@lang" in p["title"] else p["title"]
             if p.get("icon"):
                 g["image"] = p["icon"]["@src"]
             if p.get("sub-title"):
-                g["subtitle"] = p["sub-title"]["#text"] if "@lang" in p["sub-title"] and p["sub-title"].get("#text") else p["sub-title"] if type(p["sub-title"]) != dict else None
+                g["subtitle"] = p["sub-title"]["#text"] if "@lang" in p["sub-title"] else p["sub-title"]
             if p.get("desc"):
-                g["desc"] = p["desc"]["#text"] if "@lang" in p["desc"] and p["desc"].get("#text") else p["desc"] if type(p["desc"]) != dict else None
+                g["desc"] = p["desc"]["#text"] if "@lang" in p["desc"] else p["desc"]
             if p.get("date"):
                 g["date"] = p["date"]
             if p.get("country"):
-                if type(p["country"]) == list:
-                    g["country"] = ", ".join([i["#text"] for i in p["country"]]) if any([i.get("@lang") for i in p["country"]]) else ", ".join(p["country"])
-                else:
-                    g["country"] = p["country"]["#text"] if "@lang" in p["country"] else p["country"]            
-            if p.get("star-rating"):
-                if p["star-rating"].get("@system"):
-                    g["star"] = {"system": p["star-rating"]["@system"], "value": p["star-rating"]["value"]}
-                else:
-                    g["star"] = {"value": p["star-rating"]["value"]}
+                g["country"] = p["country"]
+#            if p.get("star-rating"):
+#                if p["star-rating"].get("@system"):
+#                    g["star"] = {"system": p["star-rating"]["@system"], "value": p["star-rating"]["value"]}
+#                else:
+#                    g["star"] = {"value": p["star-rating"]["value"]}
             if p.get("credits"):
                 g["director"] = []
                 if p["credits"].get("director"):
@@ -130,20 +87,15 @@ def epg_main_converter(data, channels, settings, ch_id=None):
                         g["director"] = [p["credits"]["director"]]
                 g["actor"] = []
                 if p["credits"].get("actor"):
-                    g["actor"] = []
                     if type(p["credits"]["actor"]) == list:
-                        for i in p["credits"]["actor"]:
-                            if type(i) == str:
-                                g["actor"].append(i)
-                            elif type(i) == dict and i.get("#text"):
-                                g["actor"].append(i["#text"])
-                    elif type(p["credits"]["actor"]) == dict and p["credits"]["actor"].get("#text"):
-                        g["actor"].append(p["credits"]["actor"]["#text"])
+                        g["actor"] = p["credits"]["actor"]
                     elif type(p["credits"]["actor"]) == str:
                         g["actor"] = [p["credits"]["actor"]]
+                    else:
+                        g["actor"] = []
                 g["credits"] = {"director": g["director"], "actor": g["actor"]}
                 if p.get("episode-num"):
-                    if p["episode-num"].get("@system") == "xmltv_ns":
+                    if p["episode-num"].get("@system") == "onscreen":
                         e = [i.replace(" ", "") for i in p["episode-num"]["#text"].split(".")]
                         if len(e) == 3:
                             g["s"] = int(e[0].split("/")[0]) + 1 if e[0] != "" else 0

@@ -1,9 +1,11 @@
 from datetime import datetime
 from threading import Thread
 from time import sleep
-import gzip, json, os, shutil, time, traceback
+import gzip, json, os, shutil, traceback
 import xmltodict
-
+import requests
+import os
+import subprocess
 
 class Grabber():
     def __init__(self, file_paths, provider_manager, user_db):
@@ -39,7 +41,7 @@ class Grabber():
         if self.user_db.main["settings"]["ag"] == "yes":
             start_up = True
         if self.user_db.main["settings"]["ag"] == "out" and self.file_available and \
-            int(self.user_db.main["settings"]["rate"]) * 3600 + os.path.getmtime(f"{self.file_paths['storage']}xml/epg.xml") <= datetime(*(time.strptime(f'{start_dt} {self.user_db.main["settings"]["ut"]}', "%Y%m%d %H:%M")[0:6])).timestamp():
+            int(self.user_db.main["settings"]["rate"]) * 3600 + os.path.getmtime(f"{self.file_paths['storage']}xml/epg.xml") <= datetime.strptime(f'{start_dt} {self.user_db.main["settings"]["ut"]}', "%Y%m%d %H:%M").timestamp():
                 start_up = True
         if self.user_db.main["settings"]["ag"] == "out" and not self.file_available:
             start_up = True
@@ -62,7 +64,7 @@ class Grabber():
                 if self.exit:
                     break
                 if int(self.user_db.main["settings"]["rate"]) != 0 and \
-                    (int(self.user_db.main["settings"]["rate"]) * 3600 + datetime(*(time.strptime(f'{start_dt} {self.user_db.main["settings"]["ut"]}', "%Y%m%d %H:%M")[0:6])).timestamp()) < datetime.now().timestamp():
+                    (int(self.user_db.main["settings"]["rate"]) * 3600 + datetime.strptime(f'{start_dt} {self.user_db.main["settings"]["ut"]}', "%Y%m%d %H:%M").timestamp()) < datetime.now().timestamp():
                         self.grabbing = True
                         start_dt = f'{datetime.now().strftime("%Y%m%d")}'
                 sleep(1)
@@ -73,7 +75,6 @@ class Grabber():
             self.pr.worker = 0
             self.pr.cancellation = self.cancellation
             self.pr.exit = self.exit
-            self.warning = False
             missing_genres = []
 
             # PREPARING FILES/DIRECTORIES
@@ -116,20 +117,7 @@ class Grabber():
                 elif self.pr.providers[provider].get("adv_loader"):
                     self.pr.advanced_downloader(provider, self.pr.main_downloader(provider))
                 else:
-                    try:
-                        self.pr.main_downloader(provider)
-                    except Exception as e:
-                        try:
-                            with open(f"{self.file_paths['storage']}grabber_error_log.txt", "a+") as log:
-                                log.write(f"--- {provider.upper()} WARNING LOG: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---\n")
-                                traceback.print_exc(file=log)
-                                log.write(f"--- {provider.upper()} WARNING LOG END ---\n\n")
-                            print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: An error occured while grabbing EPG data for {provider}")
-                        except:
-                            pass
-                        self.warning = True
-                        self.pr.epg_db.remove_epg_db(provider, True)
-                        self.pr.epg_db.create_epg_db(provider, False)
+                    self.pr.main_downloader(provider)
                 self.pr.pr_pr = self.pr.pr_pr + 1
 
             if self.cancellation or self.exit:
@@ -155,14 +143,16 @@ class Grabber():
                     c_data = self.user_db.main["channels"][channel]
                     image = c_data.get("preferredImage", {"uri": None})["uri"]
                     if len(channel.split("_")) == 1:
-                        lang = c_data.get("bcastLangs", ["en"])[0].lower()
+                        lang = c_data["bcastLangs"][0].lower()
                         if "-" in lang:
                             lang = lang.split("-")[1]
                     else:
                         lang = "en"
-                    ch_part = {"@id": c_data.get("tvg-id", channel), "display-name": {"@lang": lang, "#text": c_data["name"].replace("&amp;", "&")}}
-                    if image:
-                        ch_part["icon"] = {"@src": image}
+                    ch_part = {"@id": c_data.get("tvg-id", channel), "display-name": {"@lang": lang, "#text": c_data["name"]}}
+                    #if image:
+                        #ch_part["icon"] = {"@src": image}
+                        #AQUI
+                        #ch_part["icon"] = {"@src": f"https://zap2it.tmsimg.com/{image}"}
                     ch["channel"].append(ch_part)
                 file.write(xmltodict.unparse(ch, pretty=True, encoding="UTF-8", full_document=False))
 
@@ -172,7 +162,7 @@ class Grabber():
                 for channel in self.user_db.main["channels"].keys():
                     c_data = self.user_db.main["channels"][channel]
                     if len(channel.split("_")) == 1:
-                        lang = c_data.get("bcastLangs", ["en"])[0].lower()
+                        lang = c_data["bcastLangs"][0].lower()
                         if "-" in lang:
                             lang = lang.split("-")[1]
                     else:
@@ -213,8 +203,10 @@ class Grabber():
 
                             # ICON
                             if image is not None and image != "":
-                                program["icon"] = {"@src": image}
-
+#                                program["icon"] = {"@src": image}
+#AQUI
+                                 program["icon"] = {"@src": f"https://zap2it.tmsimg.com/{image}"}
+                            
                             # TITLE
                             if title is not None and title != "":
                                 program["title"] = {"@lang": lang, "#text": title}
@@ -232,37 +224,140 @@ class Grabber():
                                 if self.user_db.main["settings"]["rm"] == "add-info" or \
                                     self.user_db.main["settings"]["rm"] == "add-info-cast":
                                     desc_line = ""
-                                    if country is not None and country != "":
+                                    #if subtitle is not None and subtitle != "":
+                                     #   if desc_line != "":
+                                      #      desc_line = f"{desc_line}\n ▪ Título do espisódio: {subtitle}"
+                                       # else:
+                                        #    desc_line = f"{subtitle}"
+                                    #if country is not None and country != "":
+                                     #   if desc_line != "":
+                                      #      desc_line = f"{desc_line} {country}"
+                                        #else:
+                                         #   desc_line = f"{country}"
+                                    #if date is not None and date != "":
+                                     #   if desc_line != "":
+                                      #      desc_line = f"{desc_line} {date[0:4]}"
+                                       # else:
+                                        #    desc_line = f"{date[0:4]}"
+                                    #if (episode_num is not None and episode_num != "") and \
+                                     #   (season_num is not None and season_num != ""):
+                                        #if desc_line != "":
+                                            #desc_line = f"{desc_line} ● S{season_num} E{episode_num}"
+                                        #else:
+                                            #desc_line = f"S{season_num} E{episode_num}"
+                                    #elif season_num is not None and season_num != "":
+                                        #if desc_line != "":
+                                            #desc_line = f"{desc_line} ● S{season_num}"
+                                        #else:
+                                            #desc_line = f"S{season_num}"
+                                    #elif episode_num is not None and episode_num != "":
+                                        #if desc_line != "":
+                                         #   desc_line = f"{desc_line} ● E{episode_num}"
+                                        #else:
+                                            #desc_line = f"E{episode_num}"
+                                            
+                                            # SHOW CREDITS IN DESCRIPTION
+                                if self.user_db.main["settings"]["rm"] == "add-cast" or \
+                                    self.user_db.main["settings"]["rm"] == "add-info-cast":
+
+                                    cast_line = ""
+                                    director_line = ""
+                                    actor_line = ""
+
+                                    # DIRECTORS
+                                    if len(director) > 0:
+                                        for item in director:
+                                            if director_line != "":
+                                                director_line = f"{director_line}, {item}"
+                                            else:
+                                                director_line = item
+
+                                    # ACTORS
+                                    if len(actor) > 0:
+                                        for item in actor:
+                                            if actor_line != "":
+                                                actor_line = f"{actor_line}, {item}"
+                                            else:
+                                                actor_line = item
+                                    
+                                    # CAST LINE TO BE SHOWN IN DESCRIPTION
+                                    if director_line != "" and actor_line != "":
+                                        cast_line = f" ▪ Elenco: {actor_line}.\n ▪ Direção: {director_line}."
+                                        #cast_line = cast_line1.replace(",)
+                                    elif director_line != "":
+                                        cast_line = f" ▪ Direção: {director_line}."
+                                    elif actor_line != "":
+                                        cast_line = f" ▪ Elenco: {actor_line}."
+
+                                    if cast_line != "":
+                                        desc = f"{desc}\n{cast_line}"
+                                          
+                                    #if date is not None and date != "":
+                                     #   if desc_line != "":
+                                      #      desc_line = f" ▪ Produzido em: {desc_line} {date[0:4]}"
+                                       # else:
+                                        #    desc_line = f" ▪ Produzido em: {date[0:4]}"
+                                          
+                                    if rating is not None and rating == "14":
                                         if desc_line != "":
-                                            desc_line = f"{desc_line} {country}"
+                                            desc_line = f"{desc_line} ▪ Classificação: Não recomendado para menores de 14 anos."
                                         else:
-                                            desc_line = f"{country}"
-                                    if date is not None and date != "":
-                                        if desc_line != "":
-                                            desc_line = f"{desc_line} {date[0:4]}"
-                                        else:
-                                            desc_line = f"{date[0:4]}"
-                                    if (episode_num is not None and episode_num != "") and \
-                                        (season_num is not None and season_num != ""):
-                                        if desc_line != "":
-                                            desc_line = f"{desc_line} ● S{season_num} E{episode_num}"
-                                        else:
-                                            desc_line = f"S{season_num} E{episode_num}"
-                                    elif season_num is not None and season_num != "":
-                                        if desc_line != "":
-                                            desc_line = f"{desc_line} ● S{season_num}"
-                                        else:
-                                            desc_line = f"S{season_num}"
-                                    elif episode_num is not None and episode_num != "":
-                                        if desc_line != "":
-                                            desc_line = f"{desc_line} ● E{episode_num}"
-                                        else:
-                                            desc_line = f"E{episode_num}"
-                                    if rating is not None and rating != "":
+                                            desc_line = f" ▪ Classificação: Não recomendado para menores de 14 anos."
+                                    if rating is not None and rating == "A14":
                                         if desc_line != "":
                                             desc_line = f"{desc_line} ● {rating_type if rating_type is not None else 'Age'}: {rating}"
                                         else:
-                                            desc_line = f"{rating_type if rating_type is not None else 'Age:'} {rating}"
+                                            desc_line = f" ▪ Classificação: Não recomendado para menores de 14 anos."
+                                    if rating is not None and rating == "16":
+                                        if desc_line != "":
+                                            desc_line = f"{desc_line} ● {rating_type if rating_type is not None else 'Age'}: {rating}"
+                                        else:
+                                            desc_line = f" ▪ Classificação: Não recomendado para menores de 16 anos."
+                                    if rating is not None and rating == "A16":
+                                        if desc_line != "":
+                                            desc_line = f"{desc_line} ● {rating_type if rating_type is not None else 'Age'}: {rating}"
+                                        else:
+                                            desc_line = f" ▪ Classificação: Não recomendado para menores de 16 anos."
+                                    if rating is not None and rating == "18":
+                                        if desc_line != "":
+                                            desc_line = f"{desc_line} ● {rating_type if rating_type is not None else 'Age'}: {rating}"
+                                        else:
+                                            desc_line = f" ▪ Classificação: Não recomendado para menores de 18 anos."
+                                    if rating is not None and rating == "A18":
+                                        if desc_line != "":
+                                            desc_line = f"{desc_line} ● {rating_type if rating_type is not None else 'Age'}: {rating}"
+                                        else:
+                                            desc_line = f" ▪ Classificação: Não recomendado para menores de 18 anos."
+                                    if rating is not None and rating == "L":
+                                        if desc_line != "":
+                                            desc_line = f"{desc_line} ● {rating_type if rating_type is not None else 'Age'}: {rating}"
+                                        else:
+                                            desc_line = f" ▪ Classificação: Programa livre para todas as idades."
+                                    if rating is not None and rating == "AL":
+                                        if desc_line != "":
+                                            desc_line = f"{desc_line} ● {rating_type if rating_type is not None else 'Age'}: {rating}"
+                                        else:
+                                            desc_line = f" ▪ Classificação: Programa livre para todas as idades."
+                                    if rating is not None and rating == "10":
+                                        if desc_line != "":
+                                            desc_line = f"{desc_line} ● {rating_type if rating_type is not None else 'Age'}: {rating}"
+                                        else:
+                                            desc_line = f" ▪ Classificação: Não recomendado para menores de 10 anos."
+                                    if rating is not None and rating == "A10":
+                                        if desc_line != "":
+                                            desc_line = f"{desc_line} ● {rating_type if rating_type is not None else 'Age'}: {rating}"
+                                        else:
+                                            desc_line = f" ▪ Classificação: Não recomendado para menores de 10 anos."
+                                    if rating is not None and rating == "12":
+                                        if desc_line != "":
+                                            desc_line = f"{desc_line} ● {rating_type if rating_type is not None else 'Age'}: {rating}"
+                                        else:
+                                            desc_line = f" ▪ Classificação: Não recomendado para menores de 12 anos."
+                                    if rating is not None and rating == "A12":
+                                        if desc_line != "":
+                                            desc_line = f"{desc_line} ● {rating_type if rating_type is not None else 'Age'}: {rating}"
+                                        else:
+                                            desc_line = f" ▪ Classificação: Não recomendado para menores de 12 anos."
                                     if star_value is not None and star_value != "" and len(star_value.split("/")) > 1:
                                         current_star_num = float(star_value.split("/")[0])
                                         max_star_num = float(star_value.split("/")[1])
@@ -282,42 +377,9 @@ class Grabber():
                                         else:
                                             desc_line = f"{star_rating if star_rating != '' else 'Star'} Rating: {star_desc_line}"
                                     if desc_line != "":
-                                        desc = f"{desc_line}\n{desc}"
+                                        desc = f"{desc}\n{desc_line}"
 
-                                # SHOW CREDITS IN DESCRIPTION
-                                if self.user_db.main["settings"]["rm"] == "add-cast" or \
-                                    self.user_db.main["settings"]["rm"] == "add-info-cast":
-
-                                    cast_line = ""
-                                    director_line = ""
-                                    actor_line = ""
-
-                                    # DIRECTORS
-                                    if len(director) > 0:
-                                        for item in director:
-                                            if director_line != "":
-                                                director_line = f"{director_line}\n{item}"
-                                            else:
-                                                director_line = item
-
-                                    # ACTORS
-                                    if len(actor) > 0:
-                                        for item in actor:
-                                            if actor_line != "":
-                                                actor_line = f"{actor_line}\n{item}"
-                                            else:
-                                                actor_line = item
-
-                                    # CAST LINE TO BE SHOWN IN DESCRIPTION
-                                    if director_line != "" and actor_line != "":
-                                        cast_line = f"Director(s):\n\n{director_line}\n\nActor(s):\n\n{actor_line}"
-                                    elif director_line != "":
-                                        cast_line = f"Director(s):\n\n{director_line}"
-                                    elif actor_line != "":
-                                        cast_line = f"Actor(s):\n\n{actor_line}"
-
-                                    if cast_line != "":
-                                        desc = f"{desc}\n\n{cast_line}"
+                                
 
                                 program["desc"] = {"@lang": lang, "#text": desc}
 
@@ -351,11 +413,11 @@ class Grabber():
                                     genre = self.user_db.genres.get("genres", {}).get(g)
                                     if genre and genre not in mapped_genres:
                                         mapped_genres.append(genre)
-                                        program["category"].append({"@lang": "en", "#text": genre})
+                                        program["category"].append({"@lang": "br", "#text": genre})
                                     elif not genre:
                                         if g not in missing_genres:
                                             missing_genres.append(g)
-                                        program["category"].append({"@lang": "en", "#text": g})
+                                        program["category"].append({"@lang": "br", "#text": g})
                             del genres, mapped_genres
 
                             # EPISODE
@@ -365,8 +427,9 @@ class Grabber():
                                     season_num = 1
                                 if episode_num is None:
                                     episode_num = 1
-                                program["episode-num"] = {"@system": "xmltv_ns", 
-                                    "#text": f"{int(season_num) - 1} . {int(episode_num) - 1} . "}
+                                program["title"] = {"@lang": lang, "#text": f"{title} - S{int(season_num)} E{int(episode_num)}"}
+                                #program["episode-num"] = {"@system": "onscreen", 
+                                    #"#text": f"S{int(season_num)} E{int(episode_num)}"}
 
 
                             # AGE RATING
@@ -414,6 +477,23 @@ class Grabber():
                 os.remove(f"{self.file_paths['storage']}xml/epg.xml")
             os.rename(f"{self.file_paths['storage']}xml/test.xml", f"{self.file_paths['storage']}xml/epg.xml")       
 
+#exit_code = subprocess.call('/etc/epgimport/easy/xml/limpar.sh')
+#print(exit_code)
+
+            #AQUI
+            refresh_epg_url = f"http://localhost:9981/api/epggrab/internal/rerun?rerun=1"
+            refresh_epg = requests.get(refresh_epg_url).json()
+            #AQUI
+            #AQUI 2
+            #some_command = (
+            #"""
+            #cd ~/.kodi/userdata/addon_data/script.service.easyepg-lite/xml
+            #mkdir teste
+            #python convert.py --input-file epg.xml --output-file guide.xml
+            #"""
+            #)
+            #p = subprocess.Popen(some_command, stdout=subprocess.PIPE, shell=True)
+            #AQUI 2
             self.status = "Creating compressed file..."
             with open(f"{self.file_paths['storage']}xml/epg.xml", 'rb') as f_in, gzip.open(f"{self.file_paths['storage']}xml/epg.xml.gz", 'wb') as f_out:
                 f_out.writelines(f_in)
@@ -439,10 +519,7 @@ class Grabber():
                 pass
             
             del missing_genres
-            if self.warning:
-                self.status = "File created successfully, but an error occured. Please check the log file."
-            else:
-                self.status = "File created successfully!"
+            self.status = "File created successfully!"
             self.pr.progress = 100
             self.grabbing = False
             self.started = False
@@ -472,3 +549,4 @@ class Grabber():
                 self.status = "An error occurred. Please check the log file."
             sleep(5)
             self.status = "Idle"
+    

@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-import json, requests, time
+import json, requests
 
 def login(data, credentials, headers):
     new_key = credentials["key"]
@@ -32,8 +32,8 @@ def epg_main_converter(data, channels, settings, ch_id=None):
         g = dict()
         
         g["c_id"] = ch_id
-        g["start"] = int(datetime(*(time.strptime(i["startTime"], "%Y-%m-%dT%H:%MZ")[0:6])).timestamp())
-        g["end"] = int(datetime(*(time.strptime(i["endTime"], "%Y-%m-%dT%H:%MZ")[0:6])).timestamp())
+        g["start"] = int(datetime.strptime(i["startTime"], "%Y-%m-%dT%H:%MZ").timestamp())
+        g["end"] = int(datetime.strptime(i["endTime"], "%Y-%m-%dT%H:%MZ").timestamp())
         g["b_id"] = f'{i["program"]["tmsId"]}_{g["start"]}_{g["end"]}_{g["c_id"]}'
 
         entity_type = i["program"].get("entityType", "None")
@@ -42,7 +42,7 @@ def epg_main_converter(data, channels, settings, ch_id=None):
         title_string = i["program"]["title"]
         subtitle = i["program"].get("episodeTitle", i["program"].get("eventTitle"))
         if subtitle is not None and entity_type == "Sports":
-            title_string = f"{title_string} {subtitle}"
+            title_string = f"{title_string}: {subtitle}"
         if "Live" in qualifiers:
             title_string = f"{title_string} - Ao Vivo"
         g["title"] = title_string
@@ -52,12 +52,12 @@ def epg_main_converter(data, channels, settings, ch_id=None):
 
         g["image"] = i["program"].get("preferredImage", {"uri": None})["uri"]
         g["desc"] = i["program"].get("longDescription", i["program"].get("shortDescription"))
-        g["date"] = datetime(*(time.strptime(i["program"]["origAirDate"], "%Y-%m-%d")[0:6])).strftime("%Y") if i["program"].get("origAirDate") is not None else \
+        g["date"] = datetime.strptime(i["program"]["origAirDate"], "%Y-%m-%d").strftime("%Y") if i["program"].get("origAirDate") is not None else \
             str(i["program"]["releaseYear"]) if i["program"].get("releaseYear") is not None else None
         
         star = i["program"].get("qualityRating", {"value": None})["value"]
-        if star is not None:
-            g["star"] = {"system": "TMS", "value": f"{str(star)}/4"}
+#        if star is not None:
+#            g["star"] = {"system": "TMS", "value": f"{str(star)}/4"}
 
         g["director"] = i["program"].get("directors", [])
         g["actor"] = i["program"].get("topCast", [])
@@ -68,17 +68,17 @@ def epg_main_converter(data, channels, settings, ch_id=None):
         g["season_episode_num"] = {"season": s_num, "episode": e_num}
 
         g["genres"] = i["program"].get("genres", [])
-        if entity_type == "Sports" or entity_type == "Movie":
-            g["genres"].append(entity_type)
-        if qualifiers is not None:
-            g["qualifiers"] = i.get("qualifiers", [])
+#        if entity_type == "Sports" or entity_type =="Movie":
+#        	g["genres"].append(entity_type)
+#        if qualifiers is not None:
+#            g["qualifiers"] = i.get("qualifiers", [])
 
         # DEFINE AGE RATING
         rating = None
         rating_type = None
         for r in i["program"].get("ratings", []):
             if r["body"] == "Freiwillige Selbstkontrolle der Filmwirtschaft" and settings["at"] == "fsk" or \
-                r["body"] == "USA Parental Rating" and settings["at"] == "usa":
+                r["body"] == "Departamento de Justiça, Classificação, Títulos e Qualificação" and settings["at"] == "bra":
                     rating_type = settings["at"].upper()
                     rating = r["code"]
         g["rating"] = {"system": rating_type, "value": rating}
