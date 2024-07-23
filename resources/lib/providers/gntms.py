@@ -44,7 +44,7 @@ def epg_main_converter(data, channels, settings, ch_id=None):
         if subtitle is not None and entity_type == "Sports":
             title_string = f"{title_string} {subtitle}"
         if "Live" in qualifiers:
-            title_string = f"[LIVE] {title_string}"
+            title_string = f"{title_string} - Ao Vivo"
         g["title"] = title_string
 
         if subtitle is not None and subtitle != "" and entity_type != "Sports":
