@@ -1,0 +1,60 @@
+{
+    "gntms":
+
+    {
+
+        "module": "gntms",
+        
+        "login_req": true,
+        "auth_req": true,
+        "auth_type": "api_key",
+
+        "main_loader": true,
+        "main_threads": 1,
+        "adv_loader": false,
+
+        "menu_visibility": false
+
+    },
+
+    "xmltv":
+
+    {
+
+        "module": "xmltv",
+
+        "login_req": false,
+        "auth_req": false,
+
+        "main_loader": true,
+        "main_threads": 1,
+
+        "adv_loader": false,
+
+        "menu_visibility": false
+
+    },
+
+    "tkmde":
+
+    {
+
+        "module": "tkmde",
+        
+        "name": "Telekom Magenta TV",
+        "country": "DE",
+
+        "login_req": true,
+        "auth_req": false,
+        "exp": 1800,
+
+        "main_loader": true,
+        "main_threads": 4,
+        "max_dl_num": 7,
+        "max_dl_threads": 7,
+
+        "adv_loader": false
+
+    }
+
+}
