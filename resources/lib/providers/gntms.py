@@ -30,7 +30,7 @@ def epg_main_converter(data, channels, settings, ch_id=None):
 
     for i in item:
         g = dict()
-        
+
         g["c_id"] = ch_id
         g["start"] = int(datetime(*(time.strptime(i["startTime"], "%Y-%m-%dT%H:%MZ")[0:6])).timestamp())
         g["end"] = int(datetime(*(time.strptime(i["endTime"], "%Y-%m-%dT%H:%MZ")[0:6])).timestamp())
@@ -54,9 +54,19 @@ def epg_main_converter(data, channels, settings, ch_id=None):
 
         g["image"] = i["program"].get("preferredImage", {"uri": None})["uri"]
         g["desc"] = i["program"].get("longDescription", i["program"].get("shortDescription"))
+        if "gameDate" in i["program"] and i["program"].get("entityType") == "Sports" and "Live" not in qualifiers:
+            game_date_str = i["program"]["gameDate"]
+            try:
+                game_date_obj = datetime.strptime(game_date_str, "%Y-%m-%d")
+                formatted_date = game_date_obj.strftime("%d/%m/%Y")
+                g["desc"] = f"{g['desc']}\n\nEvento realizado em: {formatted_date}"
+            except ValueError:
+                # Se houver um erro ao converter a data, use a data original
+                g["desc"] = f"{g['desc']}\n\nEvento realizado em: {game_date_str}"
+
         g["date"] = datetime(*(time.strptime(i["program"]["origAirDate"], "%Y-%m-%d")[0:6])).strftime("%Y") if i["program"].get("origAirDate") is not None else \
             str(i["program"]["releaseYear"]) if i["program"].get("releaseYear") is not None else None
-        
+
         star = i["program"].get("qualityRating", {"value": None})["value"]
         if star is not None:
             g["star"] = {"system": "TMS", "value": f"{str(star)}/4"}
@@ -64,7 +74,7 @@ def epg_main_converter(data, channels, settings, ch_id=None):
         g["director"] = i["program"].get("directors", [])
         g["actor"] = i["program"].get("topCast", [])
         g["credits"] = {"director": g["director"], "actor": g["actor"]}
-        
+
         e_num = i["program"].get("episodeNum")
         s_num = i["program"].get("seasonNum")
         g["season_episode_num"] = {"season": s_num, "episode": e_num}
@@ -80,8 +90,8 @@ def epg_main_converter(data, channels, settings, ch_id=None):
         rating_type = None
         for r in i["program"].get("ratings", []):
             if r["body"] == "Departamento de Justiça, Classificação, Títulos e Qualificação" and settings["at"] == "BRA":
-                    rating_type = settings["at"].upper()
-                    rating = r["code"]
+                rating_type = settings["at"].upper()
+                rating = r["code"]
         g["rating"] = {"system": rating_type, "value": rating}
 
         airings.append(g)
